@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Cipher</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --border: #222222;
+      --text: #f2ece2;
+      --muted: #444;
+      --accent: #c8a97e;
+      --accent-dim: rgba(200, 169, 126, 0.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Palatino Linotype', Palatino, Georgia, serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Noise texture overlay ─────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    /* ── Upload Screen ─────────────────────────────── */
+    #upload-screen {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.6rem;
+      padding: 3rem 2rem;
+      text-align: center;
+      animation: fadeIn 0.6s ease both;
+    }
+
+    .sigil {
+      width: 64px;
+      height: 64px;
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      margin-bottom: 0.4rem;
+    }
+
+    .sigil::before {
+      content: '';
+      position: absolute;
+      inset: 6px;
+      border: 1px solid rgba(200,169,126,0.3);
+      border-radius: 50%;
+    }
+
+    .sigil-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+
+    #upload-screen h1 {
+      font-size: 1.9rem;
+      font-weight: 400;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    #upload-screen p {
+      font-size: 0.9rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      line-height: 1.7;
+    }
+
+    .upload-btn {
+      margin-top: 1rem;
+      display: inline-block;
+      padding: 0.85rem 2.4rem;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 0.8rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .upload-btn:active {
+      background: var(--accent-dim);
+    }
+
+    /* ── Main App ──────────────────────────────────── */
+    #app {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      position: relative;
+      z-index: 1;
+      animation: fadeIn 0.5s ease both;
+    }
+
+    /* Header */
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.1rem 1.4rem 0.9rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .app-title {
+      font-size: 0.7rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.8rem;
+    }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.3rem;
+      line-height: 1;
+      transition: color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .icon-btn:active { color: var(--accent); }
+
+    /* Display area */
+    #display-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2.5rem 2rem;
+      overflow-y: auto;
+    }
+
+    #cipher-output {
+      font-family: 'CipherFont', serif;
+      font-size: clamp(2rem, 8vw, 3.5rem);
+      line-height: 1.5;
+      text-align: center;
+      color: var(--text);
+      word-break: break-word;
+      width: 100%;
+      transition: opacity 0.2s;
+      white-space: pre-wrap;
+    }
+
+    #cipher-output.placeholder {
+      color: var(--muted);
+      font-size: clamp(1.2rem, 5vw, 2rem);
+      font-family: Palatino, Georgia, serif;
+    }
+
+    /* Font size controls */
+    .size-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.2rem;
+      padding: 0.7rem 1.4rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .size-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .size-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .size-btn:active { border-color: var(--accent); color: var(--accent); }
+
+    /* Input area */
+    .input-area {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 1.1rem 1.4rem;
+      padding-bottom: max(1.1rem, env(safe-area-inset-bottom));
+    }
+
+    .input-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    #text-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: Palatino, Georgia, serif;
+      font-size: 1.05rem;
+      line-height: 1.5;
+      resize: none;
+      height: 52px;
+      -webkit-appearance: none;
+    }
+
+    #text-input::placeholder { color: var(--muted); }
+
+    /* ── Focus Overlay ─────────────────────────────── */
+    #focus-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 10;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2.5rem;
+      animation: fadeIn 0.3s ease both;
+    }
+
+    #focus-text {
+      font-family: 'CipherFont', serif;
+      font-size: clamp(2rem, 9vw, 4rem);
+      line-height: 1.5;
+      text-align: center;
+      color: var(--text);
+      word-break: break-word;
+      white-space: pre-wrap;
+      width: 100%;
+    }
+
+    #exit-focus {
+      position: fixed;
+      bottom: max(2rem, env(safe-area-inset-bottom, 2rem));
+      left: 50%;
+      transform: translateX(-50%);
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      padding: 0.6rem 1.6rem;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .font-name-tag {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      text-transform: uppercase;
+      opacity: 0.5;
+    }
+
+    /* ── Animations ────────────────────────────────── */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Toast ─────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 6rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      padding: 0.6rem 1.4rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s, transform 0.25s;
+      white-space: nowrap;
+      z-index: 20;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Upload Screen ────────────────────────── -->
+  <div id="upload-screen">
+    <div class="sigil"><div class="sigil-dot"></div></div>
+    <h1>Cipher</h1>
+    <p>Load your custom font once.<br>Your messages, encoded.</p>
+    <label class="upload-btn">
+      <input type="file" accept=".ttf,.otf" id="font-upload" hidden />
+      Load Font File
+    </label>
+  </div>
+
+  <!-- ── Main App ─────────────────────────────── -->
+  <div id="app">
+    <div class="app-header">
+      <span class="app-title">Cipher</span>
+      <div class="header-actions">
+        <button class="icon-btn" id="focus-btn" title="Focus mode">⊡</button>
+        <button class="icon-btn" id="clear-btn" title="Clear">✕</button>
+        <button class="icon-btn" id="change-font-btn" title="Change font" style="font-size:0.75rem;letter-spacing:0.05em">Font</button>
+      </div>
+    </div>
+
+    <div id="display-area">
+      <div id="cipher-output" class="placeholder">your cipher appears here</div>
+    </div>
+
+    <div class="size-controls">
+      <button class="size-btn" id="size-down">−</button>
+      <span class="size-label">Size</span>
+      <button class="size-btn" id="size-up">+</button>
+    </div>
+
+    <div class="input-area">
+      <div class="input-label">Type your message</div>
+      <textarea id="text-input" placeholder="start typing..."></textarea>
+    </div>
+  </div>
+
+  <!-- ── Focus Overlay ─────────────────────────── -->
+  <div id="focus-overlay">
+    <div id="focus-text"></div>
+    <button id="exit-focus">Tap to exit</button>
+  </div>
+
+  <!-- ── Toast ─────────────────────────────────── -->
+  <div id="toast"></div>
+
+  <script>
+    const FONT_KEY = 'cipher_font_v1';
+    const SIZE_KEY = 'cipher_size_v1';
+
+    let currentSize = parseInt(localStorage.getItem(SIZE_KEY)) || 3;
+    const sizes = ['1.5rem', '2rem', '2.8rem', '3.5rem', '4.5rem'];
+
+    // ── Elements ──────────────────────────────────
+    const uploadScreen   = document.getElementById('upload-screen');
+    const app            = document.getElementById('app');
+    const fontUpload     = document.getElementById('font-upload');
+    const textInput      = document.getElementById('text-input');
+    const cipherOutput   = document.getElementById('cipher-output');
+    const focusOverlay   = document.getElementById('focus-overlay');
+    const focusText      = document.getElementById('focus-text');
+    const focusBtn       = document.getElementById('focus-btn');
+    const exitFocusBtn   = document.getElementById('exit-focus');
+    const clearBtn       = document.getElementById('clear-btn');
+    const changeFontBtn  = document.getElementById('change-font-btn');
+    const sizeUp         = document.getElementById('size-up');
+    const sizeDown       = document.getElementById('size-down');
+    const toast          = document.getElementById('toast');
+
+    // ── Font Loading ──────────────────────────────
+    function loadFont(dataUrl) {
+      const face = new FontFace('CipherFont', `url(${dataUrl})`);
+      face.load().then(loaded => {
+        document.fonts.add(loaded);
+        uploadScreen.style.display = 'none';
+        app.style.display = 'flex';
+        applySize();
+        showToast('Font loaded');
+      }).catch(() => {
+        showToast('Could not load font');
+      });
+    }
+
+    // Check localStorage on load
+    const stored = localStorage.getItem(FONT_KEY);
+    if (stored) loadFont(stored);
+
+    fontUpload.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const dataUrl = ev.target.result;
+        try { localStorage.setItem(FONT_KEY, dataUrl); } catch (_) {}
+        loadFont(dataUrl);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    changeFontBtn.addEventListener('click', () => {
+      fontUpload.click();
+    });
+
+    // ── Text Input ────────────────────────────────
+    textInput.addEventListener('input', () => {
+      const val = textInput.value;
+      if (val.trim() === '') {
+        cipherOutput.textContent = 'your cipher appears here';
+        cipherOutput.classList.add('placeholder');
+      } else {
+        cipherOutput.textContent = val;
+        cipherOutput.classList.remove('placeholder');
+      }
+      focusText.textContent = val;
+    });
+
+    // ── Size Controls ─────────────────────────────
+    function applySize() {
+      const s = sizes[currentSize];
+      cipherOutput.style.fontSize = s;
+      focusText.style.fontSize = s;
+      localStorage.setItem(SIZE_KEY, currentSize);
+    }
+
+    sizeUp.addEventListener('click', () => {
+      if (currentSize < sizes.length - 1) { currentSize++; applySize(); }
+    });
+
+    sizeDown.addEventListener('click', () => {
+      if (currentSize > 0) { currentSize--; applySize(); }
+    });
+
+    // ── Focus Mode ────────────────────────────────
+    focusBtn.addEventListener('click', () => {
+      if (!textInput.value.trim()) { showToast('Type something first'); return; }
+      focusOverlay.style.display = 'flex';
+    });
+
+    exitFocusBtn.addEventListener('click', () => {
+      focusOverlay.style.display = 'none';
+    });
+
+    // ── Clear ─────────────────────────────────────
+    clearBtn.addEventListener('click', () => {
+      textInput.value = '';
+      cipherOutput.textContent = 'your cipher appears here';
+      cipherOutput.classList.add('placeholder');
+      focusText.textContent = '';
+    });
+
+    // ── Toast ─────────────────────────────────────
+    let toastTimer;
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+  </script>
+</body>
+</html>
